@@ -36,7 +36,11 @@ def init_db():
             is_active INTEGER DEFAULT 0
         )
     """)
-
+cur.execute("""
+    CREATE TABLE IF NOT EXISTS allowed_users (
+        telegram_id INTEGER PRIMARY KEY
+    )
+""")
     conn.commit()
     conn.close()
 
