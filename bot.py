@@ -64,6 +64,10 @@ def main_keyboard(user_id: int):
 
 @dp.message(CommandStart())
 async def start(message: Message):
+    if not has_access(message.from_user.id):
+        await message.answer("⛔ У тебя нет доступа к этому боту.")
+        return
+
     await message.answer(
         "Привет. Нажми кнопку, чтобы получить актуальную платежку.",
         reply_markup=main_keyboard(message.from_user.id)
@@ -72,8 +76,11 @@ async def start(message: Message):
 
 @dp.message(F.text == "Получить платежку")
 async def get_payment(message: Message):
+    if not has_access(message.from_user.id):
+        await message.answer("⛔ У тебя нет доступа.")
+        return
+
     conn = db()
-    cur = conn.cursor()
 
     cur.execute("SELECT name, text FROM payments WHERE is_active = 1 LIMIT 1")
     payment = cur.fetchone()
