@@ -12,7 +12,18 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS", "").split(",") if x]
+
+ADMIN_IDS = [
+    int(x.strip())
+    for x in os.getenv("ADMIN_IDS", "").split(",")
+    if x.strip()
+]
+
+ALLOWED_USERNAMES = [
+    x.strip().lower().replace("@", "")
+    for x in os.getenv("ALLOWED_USERNAMES", "").split(",")
+    if x.strip()
+]
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
@@ -37,12 +48,6 @@ def init_db():
         )
     """)
 
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS allowed_users (
-            telegram_id INTEGER PRIMARY KEY
-        )
-    """)
-
     conn.commit()
     conn.close()
 
@@ -51,11 +56,24 @@ def is_admin(user_id: int) -> bool:
     return user_id in ADMIN_IDS
 
 
-def main_keyboard(user_id: int):
+def has_access(message: Message) -> bool:
+    user_id = message.from_user.id
+    username = (message.from_user.username or "").lower()
+
+    if is_admin(user_id):
+        return True
+
+    if username in ALLOWED_USERNAMES:
+        return True
+
+    return False
+
+
+def main_keyboard(message: Message):
     kb = ReplyKeyboardBuilder()
     kb.button(text="Получить платежку")
 
-    if is_admin(user_id):
+    if is_admin(message.from_user.id):
         kb.button(text="Админка")
 
     kb.adjust(1)
@@ -64,23 +82,23 @@ def main_keyboard(user_id: int):
 
 @dp.message(CommandStart())
 async def start(message: Message):
-    if not has_access(message.from_user.id):
+    if not has_access(message):
         await message.answer("⛔ У тебя нет доступа к этому боту.")
         return
 
     await message.answer(
         "Привет. Нажми кнопку, чтобы получить актуальную платежку.",
-        reply_markup=main_keyboard(message.from_user.id)
+        reply_markup=main_keyboard(message)
     )
 
 
-@dp.message(F.text.contains("Получить платежку"))
+@dp.message(F.text == "Получить платежку")
 async def get_payment(message: Message):
-    if not has_access(message.from_user.id):
+    if not has_access(message):
         await message.answer("⛔ У тебя нет доступа.")
         return
 
-        conn = db()
+    conn = db()
     cur = conn.cursor()
 
     cur.execute("SELECT name, text FROM payments WHERE is_active = 1 LIMIT 1")
@@ -96,8 +114,8 @@ async def get_payment(message: Message):
     await message.answer(f"✅ Актуальная платежка:\n\n{name}\n\n{text}")
 
 
-@dp.message(F.text == "Админка")
 @dp.message(Command("admin"))
+@dp.message(F.text == "Админка")
 async def admin_panel(message: Message):
     if not is_admin(message.from_user.id):
         await message.answer("У тебя нет доступа.")
@@ -110,17 +128,50 @@ async def admin_panel(message: Message):
     kb.adjust(1)
 
     await message.answer("Админка:", reply_markup=kb.as_markup())
+
+
+@dp.callback_query(F.data == "add_payment")
+async def add_payment_instruction(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("Нет доступа")
+        return
+
+    await callback.message.answer(
+        "Чтобы добавить платежку, отправь сообщение в формате:\n\n"
+        "/add Название | Текст платежки\n\n"
+        "Пример:\n"
+        "/add Сбер 1 | Карта 4276 0000 0000 0000 Иван И."
+    )
+
+
+@dp.message(Command("add"))
+async def add_payment(message: Message):
     if not is_admin(message.from_user.id):
         await message.answer("У тебя нет доступа.")
         return
 
-    kb = InlineKeyboardBuilder()
-    kb.button(text="➕ Добавить платежку", callback_data="add_payment")
-    kb.button(text="📋 Список платежек", callback_data="list_payments")
-    kb.button(text="⛔ Выключить активную", callback_data="disable_active")
-    kb.adjust(1)
+    raw = message.text.replace("/add", "", 1).strip()
 
-    await message.answer("Админка:", reply_markup=kb.as_markup())
+    if "|" not in raw:
+        await message.answer("Неверный формат. Используй:\n/add Название | Текст платежки")
+        return
+
+    name, text = raw.split("|", 1)
+    name = name.strip()
+    text = text.strip()
+
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        "INSERT INTO payments (name, text, is_active) VALUES (?, ?, 0)",
+        (name, text)
+    )
+
+    conn.commit()
+    conn.close()
+
+    await message.answer("✅ Платежка добавлена.")
 
 
 @dp.callback_query(F.data == "list_payments")
@@ -211,49 +262,6 @@ async def delete_payment(callback: CallbackQuery):
     await callback.message.answer("🗑 Платежка удалена.")
 
 
-@dp.callback_query(F.data == "add_payment")
-async def add_payment_instruction(callback: CallbackQuery):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("Нет доступа")
-        return
-
-    await callback.message.answer(
-        "Чтобы добавить платежку, отправь сообщение в формате:\n\n"
-        "/add Название платежки | Текст платежки\n\n"
-        "Пример:\n"
-        "/add Сбер 1 | Карта 4276 0000 0000 0000 Иван И."
-    )
-
-
-@dp.message(Command("add"))
-async def add_payment(message: Message):
-    if not is_admin(message.from_user.id):
-        await message.answer("У тебя нет доступа.")
-        return
-
-    raw = message.text.replace("/add", "", 1).strip()
-
-    if "|" not in raw:
-        await message.answer("Неверный формат. Используй:\n/add Название | Текст платежки")
-        return
-
-    name, text = raw.split("|", 1)
-    name = name.strip()
-    text = text.strip()
-
-    conn = db()
-    cur = conn.cursor()
-
-    cur.execute(
-        "INSERT INTO payments (name, text, is_active) VALUES (?, ?, 0)",
-        (name, text)
-    )
-
-    conn.commit()
-    conn.close()
-
-    await message.answer("✅ Платежка добавлена.")
-    
 async def health_check(request):
     return web.Response(text="OK")
 
@@ -270,6 +278,8 @@ async def start_health_server():
 
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
+
+
 async def main():
     init_db()
     await start_health_server()
