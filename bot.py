@@ -110,6 +110,17 @@ async def admin_panel(message: Message):
     kb.adjust(1)
 
     await message.answer("Админка:", reply_markup=kb.as_markup())
+    if not is_admin(message.from_user.id):
+        await message.answer("У тебя нет доступа.")
+        return
+
+    kb = InlineKeyboardBuilder()
+    kb.button(text="➕ Добавить платежку", callback_data="add_payment")
+    kb.button(text="📋 Список платежек", callback_data="list_payments")
+    kb.button(text="⛔ Выключить активную", callback_data="disable_active")
+    kb.adjust(1)
+
+    await message.answer("Админка:", reply_markup=kb.as_markup())
 
 
 @dp.callback_query(F.data == "list_payments")
