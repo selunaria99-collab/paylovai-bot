@@ -81,9 +81,10 @@ async def get_payment(message: Message):
         return
 
     conn = db()
+cur = conn.cursor()
 
-    cur.execute("SELECT name, text FROM payments WHERE is_active = 1 LIMIT 1")
-    payment = cur.fetchone()
+cur.execute("SELECT name, text FROM payments WHERE is_active = 1 LIMIT 1")
+payment = cur.fetchone()
 
     conn.close()
 
