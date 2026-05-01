@@ -2,6 +2,7 @@ import os
 import sqlite3
 import asyncio
 from dotenv import load_dotenv
+from aiohttp import web
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, CallbackQuery
@@ -228,9 +229,25 @@ async def add_payment(message: Message):
 
     await message.answer("✅ Платежка добавлена.")
     
+async def health_check(request):
+    return web.Response(text="OK")
 
+
+async def start_health_server():
+    port = int(os.getenv("PORT", 10000))
+
+    app = web.Application()
+    app.router.add_get("/", health_check)
+    app.router.add_get("/healthz", health_check)
+
+    runner = web.AppRunner(app)
+    await runner.setup()
+
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
 async def main():
     init_db()
+    await start_health_server()
     await dp.start_polling(bot)
 
 
