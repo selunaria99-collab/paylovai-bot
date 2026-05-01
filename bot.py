@@ -81,10 +81,10 @@ async def get_payment(message: Message):
         return
 
     conn = db()
-cur = conn.cursor()
+    cur = conn.cursor()
 
-cur.execute("SELECT name, text FROM payments WHERE is_active = 1 LIMIT 1")
-payment = cur.fetchone()
+    cur.execute("SELECT name, text FROM payments WHERE is_active = 1 LIMIT 1")
+    payment = cur.fetchone()
 
     conn.close()
 
@@ -93,6 +93,7 @@ payment = cur.fetchone()
         return
 
     name, text = payment
+    await message.answer(f"✅ Актуальная платежка:\n\n{name}\n\n{text}")
     await message.answer(f"✅ Актуальная платежка:\n\n{name}\n\n{text}")
 
 
