@@ -74,7 +74,7 @@ async def start(message: Message):
     )
 
 
-@dp.message(F.text == "Получить платежку")
+@dp.message(F.text.contains("Получить платежку"))
 async def get_payment(message: Message):
     if not has_access(message.from_user.id):
         await message.answer("⛔ У тебя нет доступа.")
