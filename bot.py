@@ -48,6 +48,16 @@ def init_db():
         )
     """)
 
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            username TEXT,
+            payment_name TEXT,
+            created_at TEXT
+        )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -111,6 +121,22 @@ async def get_payment(message: Message):
         return
 
     name, text = payment
+
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        "INSERT INTO logs (user_id, username, payment_name, created_at) VALUES (?, ?, ?, datetime('now'))",
+        (
+            message.from_user.id,
+            message.from_user.username or "",
+            name
+        )
+    )
+
+    conn.commit()
+    conn.close()
+
     await message.answer(f"✅ Актуальная платежка:\n\n{name}\n\n{text}")
 
 
@@ -260,6 +286,38 @@ async def delete_payment(callback: CallbackQuery):
     conn.close()
 
     await callback.message.answer("🗑 Платежка удалена.")
+
+
+@dp.message(Command("logs"))
+async def show_logs(message: Message):
+    if not is_admin(message.from_user.id):
+        await message.answer("У тебя нет доступа.")
+        return
+
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT user_id, username, payment_name, created_at
+        FROM logs
+        ORDER BY id DESC
+        LIMIT 10
+    """)
+
+    rows = cur.fetchall()
+    conn.close()
+
+    if not rows:
+        await message.answer("Логов пока нет.")
+        return
+
+    text = "📊 Последние выдачи:\n\n"
+
+    for user_id, username, payment_name, created_at in rows:
+        username_text = f"@{username}" if username else "без username"
+        text += f"{created_at} — {username_text} ({user_id}) → {payment_name}\n"
+
+    await message.answer(text)
 
 
 async def health_check(request):
